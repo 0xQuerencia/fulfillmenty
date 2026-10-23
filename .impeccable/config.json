@@ -9,6 +9,12 @@
         "value": "arial",
         "createdAt": "2026-10-23T09:55:35.550Z",
         "reason": "Functional dashboard placeholder while the user-requested visual redesign is deferred; Arial is an interim system font."
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-10-23T10:27:55.255Z",
+        "reason": "user confirmed: match the supplied dashboard reference's neutral sans-serif interface typography"
       }
     ]
   }

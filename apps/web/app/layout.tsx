@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import "@fontsource-variable/dancing-script/wght.css";
+import "@fontsource-variable/inter/wght.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
