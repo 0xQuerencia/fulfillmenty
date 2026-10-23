@@ -17,7 +17,33 @@ This repository is under development. It does not claim to provide live merchant
 
 ## Development
 
-The intended local stack is Next.js, TypeScript, Fastify, PostgreSQL, Drizzle, and Redis. Setup instructions will be added with the first backend slice.
+The local stack uses Next.js, TypeScript, Fastify, PostgreSQL, Drizzle, and Redis. Demo records are fictional, clearly marked, and never treated as live observations.
+
+### Start locally
+
+```sh
+pnpm install
+cp .env.example .env
+pnpm db:up
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
+```
+
+- Dashboard: <http://localhost:3000>
+- API: <http://localhost:4000/v1>
+- API reference: <http://localhost:4000/docs>
+- PostgreSQL and Redis are only bound to `127.0.0.1` by Docker Compose.
+
+`FULFILLMENTY_LOCAL_DEMO=true` enables local-only contributor/moderator roles while `NODE_ENV=development`. Turn it off outside local development. This is a development shortcut, not an account or production authorization system.
+
+After starting PostgreSQL and applying the migration, create a scoped API key with `pnpm --filter @fulfillmenty/api key:create -- --owner=your-handle --scopes=contribute`. The command prints the secret once; only its hash and lookup prefix are stored.
+
+The API validates and stores submitted merchant URLs but does not fetch them. Accepting a suggestion creates a private provisional listing; a moderator must record a real, sourced price observation before it appears in public offer results. Unknown shipping, tax, and availability values remain unknown.
+
+The seeded products, merchant names, URLs, and price amounts are fictional examples. They have no real observation timestamps and cannot be used as merchant recommendations or evidence of regional prices.
+
+The ISO country and currency reference data source is recorded in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 ## License
 

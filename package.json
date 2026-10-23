@@ -1,0 +1,22 @@
+{
+  "name": "fulfillmenty",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.26.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,green \"pnpm --filter @fulfillmenty/api dev\" \"pnpm --filter @fulfillmenty/web dev\"",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:generate": "pnpm --filter @fulfillmenty/db generate",
+    "db:migrate": "pnpm --filter @fulfillmenty/db migrate",
+    "db:seed": "pnpm --filter @fulfillmenty/db seed",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3"
+  }
+}
