@@ -26,6 +26,14 @@ const observationSchema = z.object({
   availability: z.enum(["available", "limited", "unavailable", "unknown"]).default("unknown"),
   tax_inclusion: z.enum(["included", "excluded", "unknown", "not_applicable"]).default("unknown"),
 });
+const offerReportSchema = z.object({
+  category: z.enum(["incorrect_price", "wrong_variant", "unavailable", "merchant_or_source", "other"]),
+  details: z.string().trim().max(1000).default(""),
+});
+const offerReportDecisionSchema = z.object({
+  outcome: z.enum(["resolve", "dismiss"]),
+  reason: z.string().trim().min(8).max(1000),
+});
 const apiKeySchema = z.object({
   scopes: z.array(z.enum(["contribute", "moderate", "admin"])).min(1).max(3),
   expires_days: z.coerce.number().int().min(1).max(3650).default(90),
@@ -610,6 +618,145 @@ export async function registerRoutes(app: FastifyInstance) {
     }
     const { creator_id: _privateCreatorId, ...data } = row;
     return { data, request_id: request.id };
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/offers/:id/reports", { schema: { tags: ["Community"], summary: "Report a problem with a published offer", security: [{ BearerAuth: [] }, { LocalDemoRole: [] }] } }, async (request, reply) => {
+    const actor = await requireActor(request, reply, "contribute");
+    if (!actor) return;
+    const parsed = offerReportSchema.safeParse(request.body);
+    if (!parsed.success) return apiError(reply, request, 400, "INVALID_QUERY", "Provide a valid report category and up to 1000 characters of detail.", parsed.error.flatten().fieldErrors);
+
+    const id = `report_${randomUUID()}`;
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const offer = await client.query(
+        `SELECT o.id FROM offers o JOIN product_variants v ON v.id=o.variant_id
+         JOIN products p ON p.id=v.product_id WHERE o.id=$1 AND o.status='published' AND p.state='published'`,
+        [request.params.id],
+      );
+      if (!offer.rowCount) {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 404, "NO_VERIFIED_OFFERS", "No published offer matches that ID.");
+      }
+
+      const inserted = await client.query<{ created_at: Date }>(
+        `INSERT INTO offer_reports(id,offer_id,reporter_id,category,details)
+         VALUES($1,$2,$3,$4,$5)
+         ON CONFLICT (offer_id,reporter_id,category) WHERE status='pending' DO NOTHING
+         RETURNING created_at`,
+        [id, request.params.id, actor.id, parsed.data.category, parsed.data.details],
+      );
+      if (!inserted.rowCount) {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 409, "REPORT_ALREADY_OPEN", "You already have an open report for this offer and category.");
+      }
+
+      await client.query(
+        `INSERT INTO audit_events(id,actor_id,action,subject_type,subject_id,request_id,metadata)
+         VALUES($1,$2,'offer_report.created','offer_report',$3,$4,$5::jsonb)`,
+        [`audit_${randomUUID()}`, actor.id, id, request.id, JSON.stringify({ offer_id: request.params.id, category: parsed.data.category })],
+      );
+      await client.query("COMMIT");
+      request.log.info({ reportId: id, offerId: request.params.id, category: parsed.data.category, demo: actor.demo }, "Offer correction report created");
+      return reply.code(202).send({
+        data: { id, offer_id: request.params.id, category: parsed.data.category, status: "pending", created_at: inserted.rows[0].created_at.toISOString() },
+        request_id: request.id,
+        meta: { offer_changed: false },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      request.log.error({ err: error, offerId: request.params.id }, "Offer report could not be saved");
+      return apiError(reply, request, 503, "SERVICE_UNAVAILABLE", "The report could not be saved right now.");
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/v1/me/reports", { schema: { tags: ["Community"], summary: "List reports submitted by the caller", security: [{ BearerAuth: [] }, { LocalDemoRole: [] }] } }, async (request, reply) => {
+    const actor = await requireActor(request, reply, "contribute");
+    if (!actor) return;
+    const query = request.query as Record<string, string | undefined>;
+    const parsedLimit = limitSchema.safeParse(query.limit);
+    if (!parsedLimit.success) return apiError(reply, request, 400, "INVALID_QUERY", "limit must be between 1 and 100.");
+    const result = await db.query(
+      `SELECT r.id,r.offer_id,r.category,r.details,r.status,r.resolution_reason,r.created_at,r.decided_at,
+              p.id AS product_id,p.name AS product_name,o.destination_country
+       FROM offer_reports r JOIN offers o ON o.id=r.offer_id
+       JOIN product_variants v ON v.id=o.variant_id JOIN products p ON p.id=v.product_id
+       WHERE r.reporter_id=$1 ORDER BY r.created_at DESC LIMIT $2`,
+      [actor.id, parsedLimit.data],
+    );
+    return { data: result.rows, request_id: request.id };
+  });
+
+  app.get("/v1/admin/reports", { schema: { tags: ["Moderation"], summary: "List offer correction reports", security: [{ BearerAuth: [] }, { LocalDemoRole: [] }] } }, async (request, reply) => {
+    const actor = await requireActor(request, reply, "moderate");
+    if (!actor) return;
+    const query = request.query as Record<string, string | undefined>;
+    const status = query.status ?? "pending";
+    if (!(["pending", "resolved", "dismissed", "all"] as const).includes(status as "pending" | "resolved" | "dismissed" | "all")) {
+      return apiError(reply, request, 400, "INVALID_QUERY", "status must be pending, resolved, dismissed, or all.");
+    }
+    const parsedLimit = limitSchema.safeParse(query.limit);
+    if (!parsedLimit.success) return apiError(reply, request, 400, "INVALID_QUERY", "limit must be between 1 and 100.");
+    const result = await db.query(
+      `SELECT r.id,r.offer_id,r.reporter_id,r.category,r.details,r.status,r.resolution_reason,
+              r.created_at,r.decided_by,r.decided_at,p.id AS product_id,p.name AS product_name,
+              p.brand,p.model,o.destination_country,m.id AS merchant_id,m.name AS merchant_name,
+              l.canonical_url AS source_url
+       FROM offer_reports r JOIN offers o ON o.id=r.offer_id
+       JOIN merchant_listings l ON l.id=o.listing_id JOIN merchants m ON m.id=l.merchant_id
+       JOIN product_variants v ON v.id=o.variant_id JOIN products p ON p.id=v.product_id
+       WHERE $1='all' OR r.status=$1
+       ORDER BY CASE WHEN r.status='pending' THEN 0 ELSE 1 END,r.created_at ASC LIMIT $2`,
+      [status, parsedLimit.data],
+    );
+    return { data: result.rows, request_id: request.id, meta: { local_demo_moderation: actor.demo } };
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/admin/reports/:id/decision", { schema: { tags: ["Moderation"], summary: "Resolve or dismiss an offer report with an audit record", security: [{ BearerAuth: [] }, { LocalDemoRole: [] }] } }, async (request, reply) => {
+    const actor = await requireActor(request, reply, "moderate");
+    if (!actor) return;
+    const parsed = offerReportDecisionSchema.safeParse(request.body);
+    if (!parsed.success) return apiError(reply, request, 400, "INVALID_QUERY", "Provide resolve/dismiss and a reason of at least 8 characters.", parsed.error.flatten().fieldErrors);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const selected = await client.query(
+        `SELECT id,offer_id,category,status FROM offer_reports WHERE id=$1 FOR UPDATE`,
+        [request.params.id],
+      );
+      const report = selected.rows[0];
+      if (!report) {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 404, "UNKNOWN_REPORT", "No offer report matches that ID.");
+      }
+      if (report.status !== "pending") {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 409, "REPORT_ALREADY_DECIDED", "This offer report has already been decided.");
+      }
+
+      const nextStatus = parsed.data.outcome === "resolve" ? "resolved" : "dismissed";
+      await client.query(
+        `UPDATE offer_reports SET status=$2,resolution_reason=$3,decided_by=$4,decided_at=now() WHERE id=$1`,
+        [report.id, nextStatus, parsed.data.reason, actor.id],
+      );
+      await client.query(
+        `INSERT INTO audit_events(id,actor_id,action,subject_type,subject_id,request_id,metadata)
+         VALUES($1,$2,$3,'offer_report',$4,$5,$6::jsonb)`,
+        [`audit_${randomUUID()}`, actor.id, `offer_report.${nextStatus}`, report.id, request.id,
+          JSON.stringify({ offer_id: report.offer_id, category: report.category })],
+      );
+      await client.query("COMMIT");
+      return { data: { id: report.id, status: nextStatus, resolution_reason: parsed.data.reason }, request_id: request.id, meta: { offer_changed: false } };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      request.log.error({ err: error, reportId: request.params.id }, "Offer report decision failed");
+      return apiError(reply, request, 503, "SERVICE_UNAVAILABLE", "The report decision could not be saved right now.");
+    } finally {
+      client.release();
+    }
   });
 
   app.get("/v1/admin/moderation", { schema: { tags: ["Moderation"], summary: "List moderation submissions", security: [{ BearerAuth: [] }, { LocalDemoRole: [] }] } }, async (request, reply) => {

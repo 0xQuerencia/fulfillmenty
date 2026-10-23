@@ -150,6 +150,38 @@ export const moderationDecisions = pgTable("moderation_decisions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("moderation_decisions_submission_idx").on(table.submissionId, table.createdAt)]);
 
+export const offerReports = pgTable("offer_reports", {
+  id: text("id").primaryKey(),
+  offerId: text("offer_id").notNull().references(() => offers.id),
+  reporterId: text("reporter_id").notNull(),
+  category: text("category").notNull(),
+  details: text("details").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  resolutionReason: text("resolution_reason"),
+  decidedBy: text("decided_by"),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("offer_reports_status_created_idx").on(table.status, table.createdAt),
+  index("offer_reports_reporter_created_idx").on(table.reporterId, table.createdAt),
+  uniqueIndex("offer_reports_open_unique").on(table.offerId, table.reporterId, table.category)
+    .where(sql`${table.status} = 'pending'`),
+  check("offer_reports_category_valid", sql`${table.category} IN ('incorrect_price','wrong_variant','unavailable','merchant_or_source','other')`),
+  check("offer_reports_status_valid", sql`${table.status} IN ('pending','resolved','dismissed')`),
+  check("offer_reports_details_length", sql`char_length(${table.details}) <= 1000`),
+  check("offer_reports_decision_fields", sql`(
+    ${table.status} = 'pending'
+    AND ${table.decidedAt} IS NULL
+    AND ${table.decidedBy} IS NULL
+    AND ${table.resolutionReason} IS NULL
+  ) OR (
+    ${table.status} <> 'pending'
+    AND ${table.decidedAt} IS NOT NULL
+    AND ${table.decidedBy} IS NOT NULL
+    AND ${table.resolutionReason} IS NOT NULL
+  )`),
+]);
+
 export const auditEvents = pgTable("audit_events", {
   id: text("id").primaryKey(),
   actorId: text("actor_id").notNull(),
