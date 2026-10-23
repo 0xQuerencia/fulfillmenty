@@ -39,6 +39,8 @@ pnpm dev
 
 After starting PostgreSQL and applying the migration, create a scoped API key with `pnpm --filter @fulfillmenty/api key:create -- --owner=your-handle --scopes=contribute`. The command prints the secret once; only its hash and lookup prefix are stored.
 
+Production startup and API key creation require `FULFILLMENTY_API_KEY_PEPPER` to be set to a unique secret with at least 32 characters. Generate one with `openssl rand -base64 32`, keep it in the deployment secret store, and never reuse the local value from `.env.example`.
+
 The API validates and stores submitted merchant URLs but does not fetch them. Accepting a suggestion creates a private provisional listing; a moderator must record a real, sourced price observation before it appears in public offer results. Unknown shipping, tax, and availability values remain unknown.
 
 The seeded products, merchant names, URLs, and price amounts are fictional examples. They have no real observation timestamps and cannot be used as merchant recommendations or evidence of regional prices.

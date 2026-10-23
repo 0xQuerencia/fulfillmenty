@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { authorize } from "./auth.js";
+import { config } from "./config.js";
 import { db } from "./db.js";
 import { apiError } from "./errors.js";
 import { DisallowedUrlError, normalizeSubmittedUrl } from "./security/submitted-url.js";
@@ -455,7 +456,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     const secret = `fy_live_${randomBytes(32).toString("base64url")}`;
     const prefix = secret.slice(0, 18);
-    const secretHash = createHash("sha256").update(`${process.env.FULFILLMENTY_API_KEY_PEPPER ?? "local-development-pepper-change-before-deploy"}:${secret}`).digest("hex");
+    const secretHash = createHash("sha256").update(`${config.apiKeyPepper}:${secret}`).digest("hex");
     const id = `key_${randomUUID()}`;
     const client = await db.connect();
     try {
