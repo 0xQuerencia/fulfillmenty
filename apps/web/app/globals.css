@@ -1,7 +1,11 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
 :root {
   color-scheme: dark;
   --ink: #e9eef2;
-  --muted: #8d9ca7;
+  --muted: #172b36;
   --faint: #667985;
   --line: #20323f;
   --canvas: #0a151e;
@@ -18,6 +22,65 @@
   --radius-sm: 5px;
   --radius-md: 8px;
   --focus: #8ecaff;
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--ink);
+  --primary: var(--blue-strong);
+  --primary-foreground: #f7fbfd;
+  --secondary: var(--surface-raised);
+  --secondary-foreground: var(--ink);
+  --muted-foreground: #8d9ca7;
+  --accent: #1b3140;
+  --accent-foreground: var(--ink);
+  --destructive: #c94850;
+  --border: var(--line);
+  --ring: var(--focus);
+  --chart-1: var(--purple);
+  --chart-2: var(--blue);
+  --chart-3: #557d96;
+  --chart-4: #3e6074;
+  --chart-5: #2c4859;
+  --radius: 0.625rem;
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--blue);
+  --sidebar-primary-foreground: var(--canvas);
+  --sidebar-accent: var(--surface-raised);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--focus);
+  --chart-positive: var(--green);
+  --chart-negative: #d48e64;
+  --chart-background: var(--surface);
+  --chart-foreground: var(--ink);
+  --chart-foreground-muted: #8d9ca7;
+  --chart-line-primary: var(--purple);
+  --chart-line-secondary: var(--blue);
+  --chart-crosshair: #9b79d1;
+  --chart-grid: #273945;
+  --chart-brush-border: var(--chart-grid);
+  --chart-tooltip-background: var(--popover);
+  --chart-tooltip-foreground: var(--popover-foreground);
+  --chart-tooltip-muted: #9aa9b2;
+  --chart-marker-background: #182a35;
+  --chart-marker-border: #344c5b;
+  --chart-marker-foreground: #e9eef2;
+  --chart-label: #80919c;
+  --chart-scale-mix: #0a151e;
+  --chart-scale-01: #1b2d38;
+  --chart-scale-02: color-mix(in oklab, var(--chart-1) 35%, var(--chart-scale-mix));
+  --chart-scale-03: color-mix(in oklab, var(--chart-1) 55%, var(--chart-scale-mix));
+  --chart-scale-04: color-mix(in oklab, var(--chart-1) 78%, var(--chart-scale-mix));
+  --chart-scale-05: var(--chart-1);
+  --chart-scale-pattern-color: #e9eef2;
+  --chart-indicator-color: #e9eef2;
+  --chart-indicator-secondary-color: #0a151e;
+  --chart-marker-badge-background: #dce8ef;
+  --chart-marker-badge-foreground: #0a151e;
+  --chart-segment-background: #182a35;
+  --chart-segment-line: #577184;
 }
 
 * { box-sizing: border-box; }
@@ -228,13 +291,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .chart-menu { display: flex; align-items: center; gap: 3px; padding: 7px 5px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
 .chart-menu:hover { background: #1a2b37; }
 .chart-menu span { width: 3px; height: 3px; border-radius: 50%; background: #8798a3; }
-.chart-plot-wrap { padding: 9px 13px 7px; }
-.price-chart { width: 100%; height: 191px; display: block; overflow: visible; }
-.chart-grid-lines path { fill: none; stroke: #273945; stroke-width: 1; stroke-dasharray: 2 5; }
-.chart-y-labels text, .chart-x-labels text { fill: #80919c; font-family: "Inter Variable", Inter, sans-serif; font-size: 8px; }
-.chart-area { fill: url(#price-fill); }
-.chart-line { fill: none; stroke: #a77be9; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.chart-point { fill: #b28cf0; stroke: #182935; stroke-width: 1.2; }
+.chart-plot-wrap { position: relative; padding: 9px 13px 7px; }
+.bklit-price-chart { width: 100%; overflow: visible; font-family: "Inter Variable", Inter, sans-serif; }
+.bklit-price-chart .text-xs { font-size: 8px; line-height: 1.2; }
+.bklit-map { width: 100%; height: 151px; overflow: hidden; }
+.bklit-map svg { max-height: 151px; }
 .chart-heading .panel-more { padding: 4px 7px; border: 1px solid #2a414e; border-radius: 4px; background: #142633; color: #9fc5df; font-size: 8px; cursor: pointer; }
 .chart-heading .panel-more:hover { background: #1c3443; }
 .countries-visual { min-height: 205px; display: grid; grid-template-columns: minmax(123px, .75fr) minmax(0, 1.25fr); gap: 9px; align-items: center; padding: 6px 11px 10px; }
@@ -244,9 +305,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .country-rank-name { overflow: hidden; color: #aab7bf; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .country-rank-count { color: #a9b7bf; font-size: 8px; }
 .map-frame { min-width: 0; display: grid; align-content: center; gap: 1px; }
-.map-frame img { width: 100%; max-height: 151px; display: block; object-fit: contain; }
 .map-frame span { color: #6f828e; font-size: 7px; text-align: center; }
-.map-frame a { color: #9dafb9; text-decoration: underline; text-decoration-color: #617682; }
 
 .page-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin: 3px 0 17px; }
 .page-heading h1 { margin: 0; color: #edf2f5; font-size: 21px; font-weight: 570; letter-spacing: -.5px; }
@@ -374,7 +433,8 @@ td a { color: #8ebfe0; text-decoration: none; }
   .dashboard-panels { grid-template-columns: minmax(0, 1fr); }
   .countries-panel { min-height: 245px; }
   .countries-visual { grid-template-columns: minmax(150px, .65fr) minmax(0, 1.35fr); }
-  .map-frame img { max-height: 168px; }
+  .bklit-map { height: 168px; }
+  .bklit-map svg { max-height: 168px; }
   .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
@@ -418,7 +478,8 @@ td a { color: #8ebfe0; text-decoration: none; }
   .country-rank-list li { grid-template-columns: 15px minmax(0, 1fr) auto; gap: 4px; }
   .country-flag { width: 14px; height: 10px; }
   .country-rank-name, .country-rank-count { font-size: 7px; }
-  .map-frame img { max-height: 132px; }
+  .bklit-map { height: 132px; }
+  .bklit-map svg { max-height: 132px; }
   .chart-plot-wrap { padding-right: 8px; padding-left: 8px; }
   .price-chart { height: 172px; }
   .product-grid { grid-template-columns: minmax(0, 1fr); padding: 9px; }
@@ -432,4 +493,148 @@ td a { color: #8ebfe0; text-decoration: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-chart-line-primary: var(--chart-line-primary);
+  --color-chart-line-secondary: var(--chart-line-secondary);
+  --color-chart-brush-border: var(--chart-brush-border);
+  --color-chart-tooltip-background: var(--chart-tooltip-background);
+  --color-chart-tooltip-foreground: var(--chart-tooltip-foreground);
+  --color-chart-tooltip-muted: var(--chart-tooltip-muted);
+  --color-chart-scale-02: var(--chart-scale-02);
+  --color-chart-scale-03: var(--chart-scale-03);
+  --color-chart-scale-04: var(--chart-scale-04);
+  --color-chart-scale-05: var(--chart-scale-05);
+  --color-chart-segment-line: var(--chart-segment-line);
+  --color-chart-segment-background: var(--chart-segment-background);
+  --color-chart-marker-badge-foreground: var(--chart-marker-badge-foreground);
+  --color-chart-marker-badge-background: var(--chart-marker-badge-background);
+  --color-chart-indicator-secondary-color: var(--chart-indicator-secondary-color);
+  --color-chart-indicator-color: var(--chart-indicator-color);
+  --color-chart-scale-pattern-color: var(--chart-scale-pattern-color);
+  --color-chart-scale-01: var(--chart-scale-01);
+  --color-chart-scale-mix: var(--chart-scale-mix);
+  --color-chart-label: var(--chart-label);
+  --color-chart-marker-foreground: var(--chart-marker-foreground);
+  --color-chart-marker-border: var(--chart-marker-border);
+  --color-chart-marker-background: var(--chart-marker-background);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-crosshair: var(--chart-crosshair);
+  --color-chart-foreground-muted: var(--chart-foreground-muted);
+  --color-chart-foreground: var(--chart-foreground);
+  --color-chart-background: var(--chart-background);
+  --color-chart-negative: var(--chart-negative);
+  --color-chart-positive: var(--chart-positive);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+  --chart-positive: oklch(0.765 0.177 163.223);
+  --chart-negative: oklch(0.704 0.191 22.216);
+  --chart-background: oklch(0.145 0 0);
+  --chart-foreground: oklch(0.45 0 0);
+  --chart-foreground-muted: oklch(0.65 0.01 260);
+  --chart-crosshair: oklch(0.45 0 0);
+  --chart-grid: oklch(0.25 0 0);
+  --chart-brush-border: var(--chart-grid);
+  --chart-marker-background: oklch(0.25 0.01 260);
+  --chart-marker-border: oklch(0.4 0.01 260);
+  --chart-marker-foreground: oklch(0.9 0 0);
+  --chart-label: oklch(0.75 0.01 260);
+  --chart-scale-mix: oklch(0.25 0 0);
+  --chart-scale-01: oklch(0.3 0 0);
+  --chart-scale-02: color-mix(in oklab, var(--chart-1) 35%, var(--chart-scale-mix));
+  --chart-scale-03: color-mix(in oklab, var(--chart-1) 55%, var(--chart-scale-mix));
+  --chart-scale-04: color-mix(in oklab, var(--chart-1) 78%, var(--chart-scale-mix));
+  --chart-scale-05: var(--chart-1);
+  --chart-scale-pattern-color: oklch(0.145 0 0);
+  --chart-indicator-color: oklch(1 0 0);
+  --chart-indicator-secondary-color: oklch(0.145 0 0);
+  --chart-marker-badge-background: oklch(1 0 0);
+  --chart-marker-badge-foreground: oklch(0.15 0 0);
+  --chart-segment-background: oklch(0.41 0.0127 248.14 / 0.25);
+  --chart-segment-line: oklch(1 0 0 / 0.25);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

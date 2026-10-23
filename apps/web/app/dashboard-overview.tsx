@@ -1,4 +1,17 @@
-import Image from "next/image";
+import type { FeatureCollection, Geometry } from "geojson";
+import { feature as topoFeature } from "topojson-client";
+import type { GeometryCollection, Topology } from "topojson-specification";
+import worldAtlas from "world-atlas/countries-110m.json";
+import { Area, AreaChart } from "@/components/charts/area-chart";
+import { Grid } from "@/components/charts/grid";
+import { XAxis } from "@/components/charts/x-axis";
+import { YAxis } from "@/components/charts/y-axis";
+import { ChartTooltip } from "@/components/charts/tooltip";
+import {
+  ChoroplethChart,
+  ChoroplethFeatureComponent,
+  ChoroplethTooltip,
+} from "@/components/charts/choropleth";
 
 type DashboardStats = {
   products: number;
@@ -40,6 +53,32 @@ const referenceCountries = [
   { code: "DE", name: "Germany", count: 521 },
 ];
 
+const priceHistory = [
+  { date: new Date("2026-10-17T12:00:00"), updates: 1260 },
+  { date: new Date("2026-10-18T12:00:00"), updates: 1520 },
+  { date: new Date("2026-10-19T12:00:00"), updates: 1380 },
+  { date: new Date("2026-10-20T12:00:00"), updates: 1910 },
+  { date: new Date("2026-10-21T12:00:00"), updates: 1760 },
+  { date: new Date("2026-10-22T12:00:00"), updates: 2260 },
+  { date: new Date("2026-10-23T12:00:00"), updates: 2050 },
+];
+
+type MapProperties = { name?: string; offers?: number; [key: string]: unknown };
+type WorldMap = FeatureCollection<Geometry, MapProperties>;
+
+const topology = worldAtlas as unknown as Topology;
+const countryCollection = (topology.objects as { countries: GeometryCollection<MapProperties> }).countries;
+const worldMap = topoFeature(topology, countryCollection) as WorldMap;
+
+const countryNameAliases: Record<string, string> = {
+  "united states of america": "united states",
+  "united republic of tanzania": "tanzania",
+  "russian federation": "russia",
+  "czech republic": "czechia",
+  "democratic republic of the congo": "democratic republic of congo",
+  "republic of the congo": "congo",
+};
+
 export function DashboardOverview({ stats, countries, apiOffline, onNavigate, onRetry }: Props) {
   const isReferencePreview = stats === null;
   const metrics = isReferencePreview
@@ -54,9 +93,22 @@ export function DashboardOverview({ stats, countries, apiOffline, onNavigate, on
   const liveCountries = countries
     .filter((country) => country.published_offer_count > 0)
     .sort((left, right) => right.published_offer_count - left.published_offer_count)
-    .slice(0, 5)
     .map((country) => ({ code: country.code, name: country.name, count: country.published_offer_count }));
-  const countryRows = liveCountries.length ? liveCountries : referenceCountries;
+  const countryRows = liveCountries.length ? liveCountries.slice(0, 5) : referenceCountries;
+  const mappedCountries = liveCountries.length ? liveCountries : referenceCountries;
+  const offersByName = new Map(
+    mappedCountries.map((country) => [normalizeCountryName(country.name), country.count]),
+  );
+  const mapData = {
+    ...worldMap,
+    features: worldMap.features.map((country) => ({
+      ...country,
+      properties: {
+        ...country.properties,
+        offers: offersByName.get(normalizeCountryName(country.properties.name ?? "")) ?? 0,
+      },
+    })),
+  } satisfies WorldMap;
 
   return (
     <div className="dashboard-home">
@@ -126,8 +178,26 @@ export function DashboardOverview({ stats, countries, apiOffline, onNavigate, on
               ))}
             </ol>
             <div className="map-frame">
-              <Image src="/world-map.svg" width={1010} height={666} alt="Illustrative world map highlighting selected sourcing regions" />
-              <span><a href="https://mapsvg.com/maps/world" target="_blank" rel="noreferrer">MapSVG</a> · illustrative coverage, not order volume</span>
+              <ChoroplethChart
+                className="bklit-map"
+                data={mapData}
+                aspectRatio="2 / 1"
+                center={[8, 18]}
+                animationDuration={600}
+              >
+                <ChoroplethFeatureComponent
+                  getFeatureColor={(country) => getCountryMapColor(Number(country.properties?.offers ?? 0))}
+                  stroke="var(--chart-grid)"
+                  strokeWidth={0.55}
+                />
+                <ChoroplethTooltip
+                  getFeatureName={(country) => String(country.properties?.name ?? "Country")}
+                  getFeatureValue={(country) => Number(country.properties?.offers ?? 0)}
+                  valueLabel="Published offers"
+                  formatValue={(value) => value.toLocaleString()}
+                />
+              </ChoroplethChart>
+              <span>{liveCountries.length ? "Hover a region for offer counts" : "Illustrative coverage shading"}</span>
             </div>
           </div>
         </section>
@@ -137,32 +207,56 @@ export function DashboardOverview({ stats, countries, apiOffline, onNavigate, on
 }
 
 function PriceChart() {
+  const dateLabels = priceHistory.map(({ date }) =>
+    new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date),
+  );
+
   return (
-    <div className="chart-plot-wrap">
-      <svg className="price-chart" viewBox="0 0 520 192" role="img" aria-label="Illustrative seven-day price update chart">
-        <defs>
-          <linearGradient id="price-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#a176ed" stopOpacity=".22" />
-            <stop offset="100%" stopColor="#a176ed" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <g className="chart-grid-lines">
-          <path d="M48 18H510 M48 52H510 M48 86H510 M48 120H510 M48 154H510" />
-        </g>
-        <g className="chart-y-labels">
-          <text x="0" y="21">2.5K</text><text x="0" y="55">2.0K</text><text x="0" y="89">1.5K</text><text x="0" y="123">1.0K</text><text x="0" y="157">500</text>
-        </g>
-        <path className="chart-area" d="M48 137 L92 116 L136 104 L180 112 L224 81 L268 89 L312 55 L356 72 L400 39 L444 62 L488 30 L488 154 L48 154 Z" />
-        <path className="chart-line" d="M48 137 L92 116 L136 104 L180 112 L224 81 L268 89 L312 55 L356 72 L400 39 L444 62 L488 30" />
-        {[ [48,137], [92,116], [136,104], [180,112], [224,81], [268,89], [312,55], [356,72], [400,39], [444,62], [488,30] ].map(([cx, cy]) => (
-          <circle className="chart-point" key={`${cx}-${cy}`} cx={cx} cy={cy} r="3.2" />
-        ))}
-        <g className="chart-x-labels">
-          <text x="48" y="181">Oct 17</text><text x="135" y="181">Oct 18</text><text x="222" y="181">Oct 19</text><text x="309" y="181">Oct 20</text><text x="396" y="181">Oct 21</text><text x="488" y="181" textAnchor="end">Oct 22</text>
-        </g>
-      </svg>
+    <div className="chart-plot-wrap" role="group" aria-label="Illustrative seven-day price update chart">
+      <AreaChart
+        className="bklit-price-chart"
+        data={priceHistory}
+        margin={{ top: 10, right: 12, bottom: 25, left: 43 }}
+        style={{ height: 191 }}
+        animationDuration={600}
+      >
+        <Grid horizontal numTicksRows={5} stroke="var(--chart-grid)" strokeDasharray="2,5" />
+        <Area
+          dataKey="updates"
+          fill="var(--chart-line-primary)"
+          fillOpacity={0.2}
+          gradientToOpacity={0}
+          strokeWidth={2}
+          showMarkers
+        />
+        <XAxis numTicks={7} labels={dateLabels} tickMode="domain" />
+        <YAxis numTicks={5} formatValue={formatUpdateCount} />
+        <ChartTooltip showDatePill={false} indicatorColor="var(--chart-line-primary)" />
+      </AreaChart>
     </div>
   );
+}
+
+function formatUpdateCount(value: number) {
+  if (value >= 1000) return `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}K`;
+  return value.toLocaleString();
+}
+
+function normalizeCountryName(name: string) {
+  const normalized = name
+    .toLocaleLowerCase("en")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return countryNameAliases[normalized] ?? normalized;
+}
+
+function getCountryMapColor(offers: number) {
+  if (offers >= 1000) return "var(--chart-scale-05)";
+  if (offers >= 650) return "var(--chart-scale-04)";
+  if (offers > 0) return "var(--chart-scale-03)";
+  return "var(--chart-scale-01)";
 }
 
 function TrendIcon() {
