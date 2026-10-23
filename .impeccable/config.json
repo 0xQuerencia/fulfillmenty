@@ -1,3 +1,15 @@
 {
-  "buildPath": "comp"
+  "buildPath": "comp",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-10-23T09:55:35.550Z",
+        "reason": "Functional dashboard placeholder while the user-requested visual redesign is deferred; Arial is an interim system font."
+      }
+    ]
+  }
 }
