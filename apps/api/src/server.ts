@@ -75,7 +75,7 @@ app.addHook("onRequest", async (request, reply) => {
 });
 
 app.setErrorHandler((error, request, reply) => {
-  if (error.statusCode === 429) {
+  if (typeof error === "object" && error !== null && "statusCode" in error && error.statusCode === 429) {
     return reply.code(429).send({ error: { code: "RATE_LIMITED", message: "Request limit reached." }, request_id: request.id });
   }
   request.log.error({ err: error }, "Unhandled API error");

@@ -32,7 +32,7 @@ function formatMinor(amount: string | null, currency: string | null) {
   if (amount === null || !currency) return "Unknown";
   try {
     const formatter = new Intl.NumberFormat(undefined, { style: "currency", currency });
-    const exponent = formatter.resolvedOptions().maximumFractionDigits;
+    const exponent = formatter.resolvedOptions().maximumFractionDigits ?? 2;
     const scale = 10n ** BigInt(exponent);
     const minor = BigInt(amount);
     const major = minor / scale;

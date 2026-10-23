@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { authorize } from "./auth.js";
@@ -24,6 +24,10 @@ const observationSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
   availability: z.enum(["available", "limited", "unavailable", "unknown"]).default("unknown"),
   tax_inclusion: z.enum(["included", "excluded", "unknown", "not_applicable"]).default("unknown"),
+});
+const apiKeySchema = z.object({
+  scopes: z.array(z.enum(["contribute", "moderate", "admin"])).min(1).max(3),
+  expires_days: z.coerce.number().int().min(1).max(3650).default(90),
 });
 
 type OfferRow = {
@@ -180,7 +184,7 @@ async function loadOffer(id: string) {
 async function requireActor(
   request: FastifyRequest,
   reply: FastifyReply,
-  scope: "contribute" | "moderate",
+  scope: "contribute" | "moderate" | "admin",
 ) {
   try {
     const actor = await authorize(request, scope);
@@ -428,6 +432,109 @@ export async function registerRoutes(app: FastifyInstance) {
     request_id: request.id,
     meta: { message: "No public snapshots are published yet.", terms: "No export license has been selected yet." },
   }));
+
+  app.get("/v1/me/api-keys", { schema: { tags: ["Community"], summary: "List API key metadata owned by the caller", security: [{ BearerAuth: [] }] } }, async (request, reply) => {
+    const actor = await requireActor(request, reply, "admin");
+    if (!actor) return;
+    const result = await db.query(
+      `SELECT id,prefix,scopes,expires_at,revoked_at,created_at
+       FROM api_keys WHERE owner_id=$1 ORDER BY created_at DESC`,
+      [actor.id],
+    );
+    return { data: result.rows, request_id: request.id };
+  });
+
+  app.post("/v1/me/api-keys", { schema: { tags: ["Community"], summary: "Create a scoped API key and display its secret once", security: [{ BearerAuth: [] }] } }, async (request, reply) => {
+    const actor = await requireActor(request, reply, "admin");
+    if (!actor) return;
+    const parsed = apiKeySchema.safeParse(request.body);
+    if (!parsed.success) return apiError(reply, request, 400, "INVALID_QUERY", "Provide valid key scopes and an expiry between 1 and 3650 days.");
+    if (!actor.scopes.includes("admin") || !parsed.data.scopes.every((scope) => actor.scopes.includes(scope) || actor.scopes.includes("admin"))) {
+      return apiError(reply, request, 403, "FORBIDDEN", "A key cannot grant scopes beyond the caller's own access.");
+    }
+
+    const secret = `fy_live_${randomBytes(32).toString("base64url")}`;
+    const prefix = secret.slice(0, 18);
+    const secretHash = createHash("sha256").update(`${process.env.FULFILLMENTY_API_KEY_PEPPER ?? "local-development-pepper-change-before-deploy"}:${secret}`).digest("hex");
+    const id = `key_${randomUUID()}`;
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query(
+        `INSERT INTO api_keys(id,owner_id,prefix,secret_hash,scopes,expires_at)
+         VALUES($1,$2,$3,$4,$5,now() + ($6::int * interval '1 day'))
+         RETURNING expires_at`,
+        [id, actor.id, prefix, secretHash, parsed.data.scopes, parsed.data.expires_days],
+      );
+      await client.query(
+        `INSERT INTO audit_events(id,actor_id,action,subject_type,subject_id,request_id,metadata)
+         VALUES($1,$2,'api_key.created','api_key',$3,$4,$5::jsonb)`,
+        [`audit_${randomUUID()}`, actor.id, id, request.id, JSON.stringify({ prefix, scopes: parsed.data.scopes })],
+      );
+      await client.query("COMMIT");
+      return reply.code(201).send({
+        data: { id, prefix, secret, scopes: parsed.data.scopes, expires_at: inserted.rows[0].expires_at },
+        request_id: request.id,
+        meta: { secret_displayed_once: true },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      request.log.error({ err: error }, "API key creation failed");
+      return apiError(reply, request, 503, "SERVICE_UNAVAILABLE", "The API key could not be created right now.");
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/v1/me/api-keys/:id", { schema: { tags: ["Community"], summary: "Revoke an owned API key", security: [{ BearerAuth: [] }] } }, async (request, reply) => {
+    const actor = await requireActor(request, reply, "admin");
+    if (!actor) return;
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      // Serialize key revocations per owner so concurrent requests cannot both
+      // pass the last-admin-key check and revoke every admin key.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('fulfillmenty-api-key'), hashtext($1))", [actor.id]);
+      const selected = await client.query(
+        `SELECT id,scopes,revoked_at FROM api_keys WHERE id=$1 AND owner_id=$2 FOR UPDATE`,
+        [request.params.id, actor.id],
+      );
+      const key = selected.rows[0];
+      if (!key) {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 404, "UNKNOWN_API_KEY", "No API key matches that ID for this owner.");
+      }
+      if (key.revoked_at) {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 409, "API_KEY_REVOKED", "This key has already been revoked.");
+      }
+      if (key.scopes.includes("admin")) {
+        const activeAdmins = await client.query(
+          `SELECT COUNT(*)::int AS count FROM api_keys
+           WHERE owner_id=$1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) AND scopes @> ARRAY['admin']::text[]`,
+          [actor.id],
+        );
+        if (activeAdmins.rows[0].count <= 1) {
+          await client.query("ROLLBACK");
+          return apiError(reply, request, 409, "LAST_ADMIN_KEY", "Create and store another active admin key before revoking the last one.");
+        }
+      }
+      await client.query(`UPDATE api_keys SET revoked_at=now() WHERE id=$1`, [key.id]);
+      await client.query(
+        `INSERT INTO audit_events(id,actor_id,action,subject_type,subject_id,request_id,metadata)
+         VALUES($1,$2,'api_key.revoked','api_key',$3,$4,'{}'::jsonb)`,
+        [`audit_${randomUUID()}`, actor.id, key.id, request.id],
+      );
+      await client.query("COMMIT");
+      return { data: { id: key.id, revoked: true }, request_id: request.id };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      request.log.error({ err: error, apiKeyId: request.params.id }, "API key revocation failed");
+      return apiError(reply, request, 503, "SERVICE_UNAVAILABLE", "The API key could not be revoked right now.");
+    } finally {
+      client.release();
+    }
+  });
 
   app.post("/v1/submissions", { schema: { tags: ["Community"], summary: "Submit a merchant offer suggestion for moderation", security: [{ BearerAuth: [] }, { LocalDemoRole: [] }] } }, async (request, reply) => {
     const actor = await requireActor(request, reply, "contribute");
