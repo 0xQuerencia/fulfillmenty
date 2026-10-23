@@ -34,6 +34,7 @@ pnpm dev
 - API: <http://localhost:4000/v1>
 - API reference: <http://localhost:4000/docs>
 - PostgreSQL and Redis are only bound to `127.0.0.1` by Docker Compose.
+- `pnpm db:up` waits for both service healthchecks before migrations run.
 
 `FULFILLMENTY_LOCAL_DEMO=true` enables local-only contributor/moderator roles while `NODE_ENV=development`. Turn it off outside local development. This is a development shortcut, not an account or production authorization system.
 

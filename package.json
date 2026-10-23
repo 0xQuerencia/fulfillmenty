@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "concurrently -k -n api,web -c cyan,green \"pnpm --filter @fulfillmenty/api dev\" \"pnpm --filter @fulfillmenty/web dev\"",
-    "db:up": "docker compose up -d postgres redis",
+    "db:up": "docker compose up -d --wait --wait-timeout 120 postgres redis",
     "db:down": "docker compose down",
     "db:generate": "pnpm --filter @fulfillmenty/db generate",
     "db:migrate": "pnpm --filter @fulfillmenty/db migrate",
