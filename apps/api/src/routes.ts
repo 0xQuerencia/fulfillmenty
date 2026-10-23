@@ -34,6 +34,10 @@ const offerReportDecisionSchema = z.object({
   outcome: z.enum(["resolve", "dismiss"]),
   reason: z.string().trim().min(8).max(1000),
 });
+const offerSuspensionSchema = z.object({
+  action: z.enum(["suspend", "restore"]),
+  reason: z.string().trim().min(8).max(1000),
+});
 const apiKeySchema = z.object({
   scopes: z.array(z.enum(["contribute", "moderate", "admin"])).min(1).max(3),
   expires_days: z.coerce.number().int().min(1).max(3650).default(90),
@@ -759,6 +763,55 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post<{ Params: { id: string } }>("/v1/admin/offers/:id/suspension", { schema: { tags: ["Moderation"], summary: "Suspend or restore a published offer with an audit record", security: [{ BearerAuth: [] }, { LocalDemoRole: [] }] } }, async (request, reply) => {
+    const actor = await requireActor(request, reply, "moderate");
+    if (!actor) return;
+    const parsed = offerSuspensionSchema.safeParse(request.body);
+    if (!parsed.success) return apiError(reply, request, 400, "INVALID_QUERY", "Provide suspend/restore and a reason of at least 8 characters.", parsed.error.flatten().fieldErrors);
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const selected = await client.query(`SELECT id,status FROM offers WHERE id=$1 FOR UPDATE`, [request.params.id]);
+      const offer = selected.rows[0];
+      if (!offer) {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 404, "UNKNOWN_OFFER", "No offer matches that ID.");
+      }
+
+      if (parsed.data.action === "suspend" && offer.status !== "published") {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 409, "OFFER_STATE_CONFLICT", "Only a published offer can be suspended.");
+      }
+      if (parsed.data.action === "restore" && offer.status !== "suspended") {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 409, "OFFER_STATE_CONFLICT", "Only a suspended offer can be restored.");
+      }
+
+      const nextStatus = parsed.data.action === "suspend" ? "suspended" : "published";
+      const auditAction = parsed.data.action === "suspend" ? "offer.suspended" : "offer.restored";
+      await client.query(`UPDATE offers SET status=$2 WHERE id=$1`, [offer.id, nextStatus]);
+      await client.query(
+        `INSERT INTO audit_events(id,actor_id,action,subject_type,subject_id,request_id,metadata)
+         VALUES($1,$2,$3,'offer',$4,$5,$6::jsonb)`,
+        [`audit_${randomUUID()}`, actor.id, auditAction, offer.id, request.id,
+          JSON.stringify({ reason: parsed.data.reason, previous_status: offer.status, status: nextStatus })],
+      );
+      await client.query("COMMIT");
+      return {
+        data: { id: offer.id, status: nextStatus },
+        request_id: request.id,
+        meta: { public_visibility: nextStatus === "published" ? "visible" : "hidden" },
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      request.log.error({ err: error, offerId: request.params.id }, "Offer suspension state change failed");
+      return apiError(reply, request, 503, "SERVICE_UNAVAILABLE", "The offer state could not be changed right now.");
+    } finally {
+      client.release();
+    }
+  });
+
   app.get("/v1/admin/moderation", { schema: { tags: ["Moderation"], summary: "List moderation submissions", security: [{ BearerAuth: [] }, { LocalDemoRole: [] }] } }, async (request, reply) => {
     const actor = await requireActor(request, reply, "moderate");
     if (!actor) return;
@@ -892,6 +945,10 @@ export async function registerRoutes(app: FastifyInstance) {
       if (!offer) {
         await client.query("ROLLBACK");
         return apiError(reply, request, 404, "NO_VERIFIED_OFFERS", "No offer matches that ID.");
+      }
+      if (offer.status === "suspended") {
+        await client.query("ROLLBACK");
+        return apiError(reply, request, 409, "OFFER_SUSPENDED", "Restore this offer before recording a price observation.");
       }
       const currency = await client.query(`SELECT code FROM currencies WHERE code=$1 AND active=true`, [parsed.data.currency]);
       if (!currency.rowCount) {

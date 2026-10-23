@@ -44,6 +44,8 @@ Production startup and API key creation require `FULFILLMENTY_API_KEY_PEPPER` to
 
 Contributors can report a published offer with `POST /v1/offers/{id}/reports` using `incorrect_price`, `wrong_variant`, `unavailable`, `merchant_or_source`, or `other`. Reports are private to the reporter and moderation team, duplicate open reports by the same actor are rejected, and moderator decisions are recorded in the audit log. Resolving a report does not change the offer automatically; moderators must make any supported catalog correction through the existing moderation flow.
 
+Moderators can remove a published offer from public results with `POST /v1/admin/offers/{id}/suspension` and `{"action":"suspend","reason":"…"}`. A later `restore` action republishes it; both changes are audited. Suspended offers cannot be republished by recording a price observation.
+
 The API validates and stores submitted merchant URLs but does not fetch them. Accepting a suggestion creates a private provisional listing; a moderator must record a real, sourced price observation before it appears in public offer results. Unknown shipping, tax, and availability values remain unknown.
 
 The seeded products, merchant names, URLs, and price amounts are fictional examples. They have no real observation timestamps and cannot be used as merchant recommendations or evidence of regional prices.
